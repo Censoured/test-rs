@@ -1,5 +1,5 @@
 [package]
-name = "rust_temp"
+name = "game-rs"
 version = "0.1.0"
 edition = "2021"
 
@@ -8,9 +8,17 @@ edition = "2021"
 [dependencies]
 rand = "0.8.5"
 glam = "0.8.5"
-rodio = "0.17.3"
+rusty_audio = "1.4.1"
 
 [dependencies.sdl2]
 version = "0.36"
 default-features = false
-features = ["image", "gfx"]
+features = ["image", "gfx", "ttf", "static-link", "use-vcpkg"]
+
+[package.metadata.vcpkg]
+dependencies = ["sdl2", "sdl2-image[libjpeg-turbo,tiff,libwebp]", "sdl2-ttf", "sdl2-gfx"]
+git = "https://github.com/microsoft/vcpkg"
+rev = "d953973cfbfeaf8022f5219fbabb0bdf9defb706"
+
+[package.metadata.vcpkg.target]
+x86_64-pc-windows-msvc = { triplet = "x64-windows-static-md" }

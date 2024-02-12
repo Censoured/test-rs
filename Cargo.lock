@@ -244,6 +244,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5443807d6dff69373d433ab9ef5378ad8df50ca6298caf15de6e52e24aaf54d5"
 
 [[package]]
+name = "game-rs"
+version = "0.1.0"
+dependencies = [
+ "glam",
+ "rand",
+ "rusty_audio",
+ "sdl2",
+]
+
+[[package]]
 name = "getrandom"
 version = "0.2.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -705,20 +715,19 @@ dependencies = [
 ]
 
 [[package]]
-name = "rust_temp"
-version = "0.1.0"
-dependencies = [
- "glam",
- "rand",
- "rodio",
- "sdl2",
-]
-
-[[package]]
 name = "rustc-hash"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
+
+[[package]]
+name = "rusty_audio"
+version = "1.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e312a651ea9ffaf466339a038e6fc49f8ebd3094588174351511207dac6050d1"
+dependencies = [
+ "rodio",
+]
 
 [[package]]
 name = "same-file"
@@ -756,6 +765,7 @@ checksum = "26bcacfdd45d539fb5785049feb0038a63931aa896c7763a2a12e125ec58bd29"
 dependencies = [
  "cfg-if",
  "libc",
+ "vcpkg",
  "version-compare",
 ]
 
@@ -900,6 +910,12 @@ name = "unicode-ident"
 version = "1.0.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3354b9ac3fae1ff6755cb6db53683adb661634f67557942dea4facebec0fee4b"
+
+[[package]]
+name = "vcpkg"
+version = "0.2.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
 
 [[package]]
 name = "version-compare"

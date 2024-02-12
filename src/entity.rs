@@ -49,16 +49,23 @@ impl Entity {
         }
     }
 
+    pub fn get_rect(&self) -> Rect {
+        return Rect::new(self.pos.x() as i32, self.pos.y() as i32, self.size, self.size);
+    }
+
     pub fn update_position(&mut self, keys: &[Keycode], dt: f32) {
         for key in keys {
             match key {
-                Keycode::W => self.pos = self.pos - Vec2::unit_y() * PLAYER_SPEED * dt,
-                Keycode::A => self.pos = self.pos - Vec2::unit_x() * PLAYER_SPEED * dt,
-                Keycode::S => self.pos = self.pos + Vec2::unit_y() * PLAYER_SPEED * dt,
-                Keycode::D => self.pos = self.pos + Vec2::unit_x() * PLAYER_SPEED * dt,
+                Keycode::W => self.vel -= Vec2::unit_y(),
+                Keycode::A => self.vel -= Vec2::unit_x(),
+                Keycode::S => self.vel += Vec2::unit_y(),
+                Keycode::D => self.vel += Vec2::unit_x(),
                 _ => {}
             }
         }
+        self.vel.normalize();
+        self.vel *= PLAYER_SPEED * dt;
+        self.pos += self.vel;
     }
 
     pub fn update(&mut self, dt: f32) {

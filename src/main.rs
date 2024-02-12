@@ -2,8 +2,12 @@ extern crate sdl2;
 
 mod entity;
 mod config;
+//mod renderer;
+
 
 use rand::Rng;
+
+use rusty_audio::Audio;
 
 use sdl2::image::{InitFlag, LoadSurface};
 use sdl2::render::{Texture, WindowCanvas};
@@ -75,7 +79,41 @@ fn draw_background(canvas: &mut WindowCanvas, texture: &Texture) {
         }
     }
 }
- 
+
+/* 
+pub fn main() {
+    //SDL Init stuff
+    let mut renderer = SdlRenderer::init(SCREEN_WIDTH, SCREEN_HEIGHT).unwrap();
+    let mut event_pump = renderer.get_sdl_context().event_pump().unwrap();
+
+    let font: sdl2::ttf::Font<'_, '_> = renderer.get_ttf_context().load_font("assets/fonts/Pono_188.ttf", 24).unwrap();
+
+    'running: loop {
+        renderer.clear_screen();
+        for event in event_pump.poll_iter() {
+            match event {
+                Event::Quit { .. } => break 'running,
+
+                Event::KeyDown { keycode: Some(keycode), .. } => {
+                    if keycode == Keycode::Escape {
+                        break 'running;
+                    }
+                }
+
+                _ => {}
+            }
+        }
+
+        renderer.draw_text(&font, format!("hello"), 10, 10);
+
+        renderer.refresh();
+
+
+        ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
+    }
+}
+*/
+
 pub fn main() {
     //SDL Init stuff
     let sdl_context = sdl2::init().unwrap();
@@ -88,6 +126,7 @@ pub fn main() {
     let mut canvas = window.into_canvas()
         .build()
         .expect("failed to build window's canvas");
+    let ttf_context = sdl2::ttf::init().map_err(|e| e.to_string()).unwrap();
 
     let texture_creator = canvas.texture_creator();
     let mut event_pump = sdl_context.event_pump().unwrap();
@@ -104,6 +143,27 @@ pub fn main() {
     let particle_surface = Surface::from_file("assets/SpaceShooterAssetPack_Miscellaneous.png").map_err(|err| format!("failed to load cursor image: {}", err)).unwrap();
     let particle_texture = texture_creator.create_texture_from_surface(particle_surface).unwrap();
 
+    let mut audio = Audio::new();
+    audio.add("shoot", "assets/sfx/LASERSHOOT.wav"); // Load the sound, give it a name
+    audio.add("explode", "assets/sfx/EXPLOSION.wav"); // Load the sound, give it a name
+
+    // Load a font
+    let font: sdl2::ttf::Font<'_, '_> = ttf_context.load_font("assets/fonts/Pono_188.ttf", 24).unwrap();
+    //font.set_style(sdl2::ttf::FontStyle::BOLD);
+
+    let mut score = 0;
+
+    let mut score_string = format!("SCORE: {}", score);
+    let dead1_string = format!("GAME OVER");
+    let dead2_string = format!("PRESS 'R' TO RESTART");
+
+    let mut surface = font
+        .render(score_string.as_str())
+        .blended(Color::RGBA(255, 0, 0, 255))
+        .map_err(|e| e.to_string()).unwrap();
+    let mut font_texture = texture_creator
+        .create_texture_from_surface(&surface)
+        .map_err(|e| e.to_string()).unwrap();
 
     let mut player = Entity::new(EntityType::Player);
     player.size = 24;
@@ -141,12 +201,28 @@ pub fn main() {
                     if keycode == Keycode::Escape {
                         break 'running;
                     }
+                    if keycode == Keycode::R {
+                        if player.life == 0
+                        {
+                            player.life = 5;
+                            player.pos = Vec2::new(400.0, 300.0);
+                            enemies.clear();
+                            enemies.push(spawn_enemy());
+                            enemies.push(spawn_enemy());
+                            enemies.push(spawn_enemy());
+                            score = 0;
+                        }
+                    }
                 }
 
                 Event::MouseButtonDown { x, y, .. } => {
                     //println!("mouse btn down at ({},{})", x, y);
-                    let m_pos = Vec2::new(x as f32,y as f32);
-                    bullets.push(spawn_bullet(&player, &m_pos));
+                   
+                    if player.life > 0 {
+                        let m_pos = Vec2::new(x as f32,y as f32);
+                        bullets.push(spawn_bullet(&player, &m_pos));
+                        audio.play("shoot");
+                    }
                 }
 
                 Event::MouseMotion { x, y, .. } => {
@@ -188,16 +264,26 @@ pub fn main() {
             e.update(delta_time);
         }
         
+        let p_rect = player.get_rect();
         for e in &mut enemies {
+            let e_rect = e.get_rect();
+            if p_rect.has_intersection(e_rect) && player.life > 0 {
+                e.life = 0;
+                player.life = 0;
+                particles.push(spawn_particle(e));
+                particles.push(spawn_particle(&mut player));
+                audio.play("explode");
+            }
             for b in &mut bullets {
                 let b_rect = Rect::new(b.pos.x() as i32, b.pos.y() as i32, b.size, b.size);
-                let e_rect = Rect::new(e.pos.x() as i32, e.pos.y() as i32, e.size, e.size);
 
                 // Check if the rectangles collide
                 if b_rect.has_intersection(e_rect) {
                     e.life = 0;
                     b.life = 0;
                     particles.push(spawn_particle(e));
+                    audio.play("explode");
+                    score += 500;
                 }
             }
         }
@@ -223,7 +309,35 @@ pub fn main() {
             e.draw(&mut canvas, &particle_texture);
         }
 
-        player.draw(&mut canvas, &texture);
+        if player.life > 0 {
+            player.draw(&mut canvas, &texture);
+        }
+        
+        score_string = format!("SCORE: {}", score);
+        surface = font.render(score_string.as_str()).solid(Color::RGBA(255, 255, 255, 255)).unwrap();
+        font_texture = texture_creator.create_texture_from_surface(&surface).unwrap();
+
+        let size = font.size_of(&score_string.as_str()).unwrap();
+        let target = Rect::new(10,10, size.0, size.1);
+        canvas.copy(&font_texture, None, Some(target)).unwrap();
+
+        if player.life == 0 {
+            surface = font.render(dead1_string.as_str()).solid(Color::RGBA(255, 255, 255, 255)).unwrap();
+            font_texture = texture_creator.create_texture_from_surface(&surface).unwrap();
+            let mut size = font.size_of(&dead1_string.as_str()).unwrap();
+            let mut target = Rect::new(300,250, size.0, size.1);
+            canvas.copy(&font_texture, None, Some(target)).unwrap();
+
+            
+            surface = font.render(dead2_string.as_str()).solid(Color::RGBA(255, 255, 255, 255)).unwrap();
+            font_texture = texture_creator.create_texture_from_surface(&surface).unwrap();
+            size = font.size_of(&dead2_string.as_str()).unwrap();
+            target = Rect::new(180,350, size.0, size.1);
+            canvas.copy(&font_texture, None, Some(target)).unwrap();
+        }
+    
+        
+
         canvas.present();
 
 
