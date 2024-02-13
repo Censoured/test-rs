@@ -35,6 +35,14 @@ fn spawn_enemy() -> Entity {
     e
 }
 
+fn spawn_powerup() -> Entity {
+    let mut e = Entity::new(EntityType::Powerup);
+    e.pos = Vec2::new(rand::thread_rng().gen_range(100..=SCREEN_WIDTH-108) as f32, rand::thread_rng().gen_range(100..=SCREEN_HEIGHT-108) as f32);
+    e.tex_coords = Rect::new(0, 4*8,8,8);
+    e.size = 24;
+    e
+}
+
 fn spawn_particle(o: &mut Entity) -> Entity {
     let mut e = Entity::new(EntityType::Particle);
     e.pos = o.pos;
@@ -146,6 +154,8 @@ pub fn main() {
     let mut audio = Audio::new();
     audio.add("shoot", "assets/sfx/LASERSHOOT.wav"); // Load the sound, give it a name
     audio.add("explode", "assets/sfx/EXPLOSION.wav"); // Load the sound, give it a name
+    audio.add("powerup_spawn", "assets/sfx/POWERUP.wav"); // Load the sound, give it a name
+    audio.add("powerup_collect", "assets/sfx/POWER_UP3.wav"); // Load the sound, give it a name
 
     // Load a font
     let font: sdl2::ttf::Font<'_, '_> = ttf_context.load_font("assets/fonts/Pono_188.ttf", 24).unwrap();
@@ -172,6 +182,9 @@ pub fn main() {
     let mut enemies: Vec<Entity> = Vec::new();
     let mut bullets: Vec<Entity> = Vec::new();
     let mut particles: Vec<Entity> = Vec::new();
+    let mut powerups: Vec<Entity> = Vec::new();
+
+    //powerups.push(spawn_powerup());
 
     enemies.push(spawn_enemy());
     enemies.push(spawn_enemy());
@@ -180,8 +193,9 @@ pub fn main() {
     let timer = sdl_context.timer().unwrap();
     let mut ticks = timer.ticks();
     let mut time_elapsed: u32 = 0;
-
+    let mut time_powerup: u32 = 0;
     let mut delta_time;
+
 
     canvas.set_draw_color(Color::RGB(0, 0, 0));
     'running: loop {
@@ -189,6 +203,7 @@ pub fn main() {
         delta_time = (timer.ticks() as f32 - ticks as f32) / 1000.0;
         // The rest of the game loop goes here...
         time_elapsed += timer.ticks() - ticks;
+        time_powerup += timer.ticks() - ticks;
         ticks = timer.ticks();
         
         //println!("dt={}", delta_time);
@@ -250,7 +265,13 @@ pub fn main() {
         if time_elapsed > SPAWN_RATE {
             enemies.push(spawn_enemy());
             time_elapsed = 0;
-        }       
+        }    
+
+        if time_powerup > POWERUP_RATE {
+            powerups.push(spawn_powerup());
+            audio.play("powerup_spawn");
+            time_powerup = 0;
+        }     
 
         for e in &mut enemies {
             e.update(delta_time);
@@ -265,13 +286,24 @@ pub fn main() {
         }
         
         let p_rect = player.get_rect();
+        for p in &mut powerups {
+            let e_rect = p.get_rect();
+            if p_rect.has_intersection(e_rect) && player.life > 0 {
+                p.life = 0;
+                player.life += 1;
+                audio.play("powerup_collect");
+            }
+        }
+
         for e in &mut enemies {
             let e_rect = e.get_rect();
             if p_rect.has_intersection(e_rect) && player.life > 0 {
                 e.life = 0;
-                player.life = 0;
+                player.life -= 1;
                 particles.push(spawn_particle(e));
-                particles.push(spawn_particle(&mut player));
+                if(player.life == 0) {
+                    particles.push(spawn_particle(&mut player));
+                }
                 audio.play("explode");
             }
             for b in &mut bullets {
@@ -291,6 +323,7 @@ pub fn main() {
         enemies.retain(|e| e.life > 0);
         bullets.retain(|e| e.life > 0);
         particles.retain(|e| e.life > 0);
+        powerups.retain(|e| e.life > 0);
        
         // Render
 
@@ -309,6 +342,10 @@ pub fn main() {
             e.draw(&mut canvas, &particle_texture);
         }
 
+        for e in &mut powerups {
+            e.draw(&mut canvas, &particle_texture);
+        }
+
         if player.life > 0 {
             player.draw(&mut canvas, &texture);
         }
@@ -320,6 +357,17 @@ pub fn main() {
         let size = font.size_of(&score_string.as_str()).unwrap();
         let target = Rect::new(10,10, size.0, size.1);
         canvas.copy(&font_texture, None, Some(target)).unwrap();
+
+        for i in 0..player.life {
+            canvas.copy_ex(&particle_texture, 
+                Rect::new(16,0,8,8), 
+                Rect::new((((i % 8 )*22) + 10) as i32 ,40 + ((i / 8) * 22),20,20),
+                0.0, 
+                None,
+                false,
+                false
+            ).unwrap();
+        }
 
         if player.life == 0 {
             surface = font.render(dead1_string.as_str()).solid(Color::RGBA(255, 255, 255, 255)).unwrap();
@@ -335,11 +383,8 @@ pub fn main() {
             target = Rect::new(180,350, size.0, size.1);
             canvas.copy(&font_texture, None, Some(target)).unwrap();
         }
-    
-        
 
         canvas.present();
-
 
         //::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
     }

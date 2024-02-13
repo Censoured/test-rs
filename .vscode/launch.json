@@ -7,15 +7,15 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'rust_temp'",
+            "name": "Debug executable 'game-rs'",
             "cargo": {
                 "args": [
                     "build",
-                    "--bin=rust_temp",
-                    "--package=rust_temp"
+                    "--bin=game-rs",
+                    "--package=game-rs"
                 ],
                 "filter": {
-                    "name": "rust_temp",
+                    "name": "game-rs",
                     "kind": "bin"
                 }
             },
@@ -25,16 +25,16 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in executable 'rust_temp'",
+            "name": "Debug unit tests in executable 'game-rs'",
             "cargo": {
                 "args": [
                     "test",
                     "--no-run",
-                    "--bin=rust_temp",
-                    "--package=rust_temp"
+                    "--bin=game-rs",
+                    "--package=game-rs"
                 ],
                 "filter": {
-                    "name": "rust_temp",
+                    "name": "game-rs",
                     "kind": "bin"
                 }
             },

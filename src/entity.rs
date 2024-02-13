@@ -3,7 +3,7 @@
 use crate::config;
 
 use glam::Vec2;
-use sdl2::rect::Rect;
+use sdl2::rect::{Rect, Point};
 use sdl2::keyboard::Keycode;
 
 use config::*;
@@ -11,19 +11,67 @@ use sdl2::render::WindowCanvas;
 use sdl2::render::Texture;
 
 
+struct Animation {
+    total_frames: i32,
+    current_frame: i32,
+    first_row: i32,
+    first_col: i32,
+    frame_size: Point,
+    frames_per_sec: i32,
+    timer: f32
+}
+
+impl Animation {
+    pub fn new(tf: i32, fr: i32, fc:i32, fs: Point, fps: i32) -> Self {
+        Animation {
+            total_frames: tf,
+            current_frame: 0,
+            first_row: fr,
+            first_col: fc,
+            frame_size: fs,
+            frames_per_sec: fps,
+            timer: 0.0
+        }
+    }
+
+    pub fn update(&mut self, dt: f32) {
+        if self.total_frames == 1 {
+            return;
+        }
+        self.timer += dt;
+        if self.timer > 1.0/(self.frames_per_sec as f32) {
+            self.timer = 0.0;
+            self.current_frame += 1;
+
+            if self.current_frame == self.total_frames {
+                self.current_frame = 0;
+            }
+        }
+    }
+
+    pub fn get_frame_rect(&self) -> Rect {
+        Rect::new(
+            self.first_col * self.frame_size.x + self.frame_size.x * self.current_frame,
+             self.first_row * self.frame_size.y,
+            self.frame_size.x as u32,
+        self.frame_size.y as u32)
+    }
+}
+
 
 #[derive(Debug, PartialEq)]
 pub enum EntityType {
     Player,
     Enemy,
     Bullet,
-    Particle
+    Particle,
+    Powerup
 }
 
 pub struct Entity {
     pub pos: Vec2,
     pub vel: Vec2,
-    pub life: i8,
+    pub life: i32,
     pub tex_coords: Rect,
     pub size: u32,
     pub rot: f64,
@@ -73,22 +121,22 @@ impl Entity {
         self.timer += dt;
         self.pos += self.vel * dt;
         self.rot = -(self.vel.x() as f64).atan2(self.vel.y() as f64).to_degrees();
-        if self.pos.x() < 0.0 {
+        if self.pos.x() < -((self.size * 2) as f32) {
             self.vel = Vec2::new(-self.vel.x(), self.vel.y());
-            self.pos = Vec2::new(0.0, self.pos.y());
+            self.pos = Vec2::new(-((self.size * 2) as f32), self.pos.y());
             out_of_bounds = true;
         }
-        if self.pos.y() < 0.0 {
+        if self.pos.y() < -((self.size * 2) as f32) {
             self.vel = Vec2::new(self.vel.x(), -self.vel.y());
-            self.pos = Vec2::new(self.pos.x(), 0.0);
+            self.pos = Vec2::new(self.pos.x(), -((self.size * 2) as f32));
             out_of_bounds = true;
         }
-        if self.pos.x() as u32 > SCREEN_WIDTH - self.size {
+        if self.pos.x() as u32 > SCREEN_WIDTH + self.size * 2 {
             self.vel = Vec2::new(-self.vel.x(), self.vel.y());
             self.pos = Vec2::new((SCREEN_WIDTH - self.size) as f32, self.pos.y());
             out_of_bounds = true;
         }
-        if self.pos.y() as u32 > SCREEN_HEIGHT - self.size {
+        if self.pos.y() as u32 > SCREEN_HEIGHT + self.size * 2 {
             self.vel = Vec2::new(self.vel.x(), -self.vel.y());
             self.pos = Vec2::new(self.pos.x(), (SCREEN_HEIGHT - self.size) as f32);
             out_of_bounds = true;
