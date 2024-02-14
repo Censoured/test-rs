@@ -2,78 +2,29 @@ extern crate sdl2;
 
 mod entity;
 mod config;
+mod asset_manager;
 //mod renderer;
 
-
-use rand::Rng;
+use asset_manager::{FontManager, TextureManager};
 
 use rusty_audio::Audio;
 
-use sdl2::image::{InitFlag, LoadSurface};
-use sdl2::render::{Texture, WindowCanvas};
+use sdl2::image::InitFlag;
+use sdl2::render::{Texture, TextureCreator, WindowCanvas};
 use sdl2::pixels::Color;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::rect::Rect;
-use sdl2::surface::Surface;
 
 use glam::Vec2;
 
 use config::*;
-use entity::Entity;
+use entity::*;
 use entity::EntityType;
+use sdl2::ttf::Font;
+use sdl2::video::WindowContext;
 
-fn spawn_enemy() -> Entity {
-    let mut e = Entity::new(EntityType::Enemy);
-    e.pos = Vec2::new(rand::thread_rng().gen_range(100..=SCREEN_WIDTH-108) as f32, rand::thread_rng().gen_range(100..=SCREEN_HEIGHT-108) as f32);
-    while e.vel == Vec2::zero() {
-        e.vel = Vec2::new(rand::thread_rng().gen_range(-ENEMY_SPEED..=ENEMY_SPEED), rand::thread_rng().gen_range(-ENEMY_SPEED..=ENEMY_SPEED));
-    }
-    e.tex_coords = Rect::new(rand::thread_rng().gen_range(4..=9)*8,rand::thread_rng().gen_range(0..=5)*8,8,8);
-    e.size = 24;
-    //println!("Spawned enemy @[{}, {}] with velocity[{}, {}]", e.pos.x(), e.pos.y(), e.vel.x(),e.vel.y());
-    e
-}
-
-fn spawn_powerup() -> Entity {
-    let mut e = Entity::new(EntityType::Powerup);
-    e.pos = Vec2::new(rand::thread_rng().gen_range(100..=SCREEN_WIDTH-108) as f32, rand::thread_rng().gen_range(100..=SCREEN_HEIGHT-108) as f32);
-    e.tex_coords = Rect::new(0, 4*8,8,8);
-    e.size = 24;
-    e
-}
-
-fn spawn_particle(o: &mut Entity) -> Entity {
-    let mut e = Entity::new(EntityType::Particle);
-    e.pos = o.pos;
-    let anim = rand::thread_rng().gen_range(1..=3);
-    match anim {
-        1 => {e.tex_coords = Rect::new(9*8, 6*8,8,8); },
-        2 => {e.tex_coords = Rect::new(10*8, 6*8,8,8); },
-        3 => {e.tex_coords = Rect::new(10*8, 7*8,8,8); },
-        _ => {e.tex_coords = Rect::new(9*8, 6*8,8,8); }
-    }
-    //e.tex_coords = Rect::new(9*8, 6*8,8,8);
-    e.size = 24;
-    e.frames = 4;
-    //println!("Spawned enemy @[{}, {}] with velocity[{}, {}]", e.pos.x(), e.pos.y(), e.vel.x(),e.vel.y());
-    e
-}
-
-fn spawn_bullet(p: &Entity, v: &Vec2) -> Entity {
-    let mut e = Entity::new(EntityType::Bullet);
-    e.pos = p.pos;
-    e.vel = *v - p.pos;
-    e.vel = e.vel.normalize();
-    e.vel *= BULLET_SPEED;
-    e.tex_coords = Rect::new(8,8,8,8);
-    e.size = 24;
-    e.rot = p.rot;
-    //println!("Spawned bullet @[{}, {}] with velocity[{}, {}]", e.pos.x(), e.pos.y(), e.vel.x(),e.vel.y());
-    e
-}
-
-fn draw_background(canvas: &mut WindowCanvas, texture: &Texture) {
+fn draw_background(canvas: &mut WindowCanvas, texture: &Texture) -> Result <(), String> {
     for x in (0..=SCREEN_WIDTH).step_by(127) {
         for y in (0..=SCREEN_HEIGHT).step_by(255) {
             canvas.copy_ex(&texture, 
@@ -83,97 +34,59 @@ fn draw_background(canvas: &mut WindowCanvas, texture: &Texture) {
                 None,
                 false,
                 false
-            ).unwrap(); 
+            )?; 
         }
     }
+    Ok(())
 }
 
-/* 
-pub fn main() {
-    //SDL Init stuff
-    let mut renderer = SdlRenderer::init(SCREEN_WIDTH, SCREEN_HEIGHT).unwrap();
-    let mut event_pump = renderer.get_sdl_context().event_pump().unwrap();
-
-    let font: sdl2::ttf::Font<'_, '_> = renderer.get_ttf_context().load_font("assets/fonts/Pono_188.ttf", 24).unwrap();
-
-    'running: loop {
-        renderer.clear_screen();
-        for event in event_pump.poll_iter() {
-            match event {
-                Event::Quit { .. } => break 'running,
-
-                Event::KeyDown { keycode: Some(keycode), .. } => {
-                    if keycode == Keycode::Escape {
-                        break 'running;
-                    }
-                }
-
-                _ => {}
-            }
-        }
-
-        renderer.draw_text(&font, format!("hello"), 10, 10);
-
-        renderer.refresh();
-
-
-        ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
-    }
+fn draw_string(str: String, x: i32, y: i32, canvas: &mut WindowCanvas, font: &Font, texture_creator: &TextureCreator<WindowContext>) -> Result <(), String> {
+    let surface = font.render(str.as_str()).solid(Color::RGBA(255, 255, 255, 255)).map_err(|e| e.to_string()).map_err(|e| e.to_string())?;
+    let font_texture = texture_creator.create_texture_from_surface(&surface).map_err(|e| e.to_string()).map_err(|e| e.to_string())?;
+    let size = font.size_of(&str.as_str()).unwrap();
+    let target = Rect::new(x,y, size.0, size.1);
+    canvas.copy(&font_texture, None, Some(target))?;
+    Ok(())
 }
-*/
 
-pub fn main() {
+pub fn main() -> Result<(), String> {
     //SDL Init stuff
-    let sdl_context = sdl2::init().unwrap();
-    let video_subsystem = sdl_context.video().unwrap();
-    let _image_context = sdl2::image::init(InitFlag::PNG | InitFlag::JPG).unwrap();
+    let sdl_context = sdl2::init()?;
+    let video_subsystem = sdl_context.video()?;
+    let _image_context = sdl2::image::init(InitFlag::PNG | InitFlag::JPG)?;
     let window = video_subsystem.window("rust-sdl2 demo", SCREEN_WIDTH, SCREEN_HEIGHT)
         .position_centered()
         .build()
-        .unwrap();
+        .expect("failed to build window");
     let mut canvas = window.into_canvas()
         .build()
         .expect("failed to build window's canvas");
-    let ttf_context = sdl2::ttf::init().map_err(|e| e.to_string()).unwrap();
+    let ttf_context = sdl2::ttf::init().map_err(|e| e.to_string())?;
 
     let texture_creator = canvas.texture_creator();
-    let mut event_pump = sdl_context.event_pump().unwrap();
-    
-    let bg_surface = Surface::from_file("assets/SpaceShooterAssetPack_BackGrounds.png").unwrap();
-    let bg_texture = texture_creator.create_texture_from_surface(bg_surface).unwrap();
-    
-    let surface2 = Surface::from_file("assets/SpaceShooterAssetPack_Ships.png").map_err(|err| format!("failed to load cursor image: {}", err)).unwrap();
-    let texture = texture_creator.create_texture_from_surface(surface2).unwrap();
 
-    let bullets_surface = Surface::from_file("assets/SpaceShooterAssetPack_Projectiles.png").map_err(|err| format!("failed to load cursor image: {}", err)).unwrap();
-    let bullets_texture = texture_creator.create_texture_from_surface(bullets_surface).unwrap();
+    // Load a font
+    let font: sdl2::ttf::Font<'_, '_> = ttf_context.load_font("assets/fonts/Pono_188.ttf", 24)?;
+    //font.set_style(sdl2::ttf::FontStyle::BOLD);
 
-    let particle_surface = Surface::from_file("assets/SpaceShooterAssetPack_Miscellaneous.png").map_err(|err| format!("failed to load cursor image: {}", err)).unwrap();
-    let particle_texture = texture_creator.create_texture_from_surface(particle_surface).unwrap();
+    let mut score = 0;
+
+    let mut event_pump = sdl_context.event_pump()?;
+
+    let mut texture_manager = TextureManager::new(&texture_creator);
+    let mut font_manager = FontManager::new(&ttf_context);
+    
+
+    let bg_texture = texture_manager.load("assets/SpaceShooterAssetPack_BackGrounds.png")?;
+    let texture = texture_manager.load("assets/SpaceShooterAssetPack_Ships.png")?;
+    let bullets_texture = texture_manager.load("assets/SpaceShooterAssetPack_Projectiles.png")?;
+    let particle_texture = texture_manager.load("assets/SpaceShooterAssetPack_Miscellaneous.png")?;
 
     let mut audio = Audio::new();
     audio.add("shoot", "assets/sfx/LASERSHOOT.wav"); // Load the sound, give it a name
     audio.add("explode", "assets/sfx/EXPLOSION.wav"); // Load the sound, give it a name
     audio.add("powerup_spawn", "assets/sfx/POWERUP.wav"); // Load the sound, give it a name
     audio.add("powerup_collect", "assets/sfx/POWER_UP3.wav"); // Load the sound, give it a name
-
-    // Load a font
-    let font: sdl2::ttf::Font<'_, '_> = ttf_context.load_font("assets/fonts/Pono_188.ttf", 24).unwrap();
-    //font.set_style(sdl2::ttf::FontStyle::BOLD);
-
-    let mut score = 0;
-
-    let mut score_string = format!("SCORE: {}", score);
-    let dead1_string = format!("GAME OVER");
-    let dead2_string = format!("PRESS 'R' TO RESTART");
-
-    let mut surface = font
-        .render(score_string.as_str())
-        .blended(Color::RGBA(255, 0, 0, 255))
-        .map_err(|e| e.to_string()).unwrap();
-    let mut font_texture = texture_creator
-        .create_texture_from_surface(&surface)
-        .map_err(|e| e.to_string()).unwrap();
 
     let mut player = Entity::new(EntityType::Player);
     player.size = 24;
@@ -184,13 +97,11 @@ pub fn main() {
     let mut particles: Vec<Entity> = Vec::new();
     let mut powerups: Vec<Entity> = Vec::new();
 
-    //powerups.push(spawn_powerup());
-
     enemies.push(spawn_enemy());
     enemies.push(spawn_enemy());
     enemies.push(spawn_enemy());
 
-    let timer = sdl_context.timer().unwrap();
+    let timer = sdl_context.timer()?;
     let mut ticks = timer.ticks();
     let mut time_elapsed: u32 = 0;
     let mut time_powerup: u32 = 0;
@@ -230,9 +141,7 @@ pub fn main() {
                     }
                 }
 
-                Event::MouseButtonDown { x, y, .. } => {
-                    //println!("mouse btn down at ({},{})", x, y);
-                   
+                Event::MouseButtonDown { x, y, .. } => {               
                     if player.life > 0 {
                         let m_pos = Vec2::new(x as f32,y as f32);
                         bullets.push(spawn_bullet(&player, &m_pos));
@@ -245,10 +154,6 @@ pub fn main() {
                     let d = m_pos - Vec2::new(player.pos.x() + 4.0, player.pos.y() + 4.0);
                     player.rot = 180.0 -(d.x() as f64).atan2(d.y() as f64).to_degrees();
                 }
-
-                //Event::MouseButtonUp { x, y, .. } => {
-                    //println!("mouse btn up at ({},{})", x, y);
-                //}
 
                 _ => {}
             }
@@ -301,7 +206,7 @@ pub fn main() {
                 e.life = 0;
                 player.life -= 1;
                 particles.push(spawn_particle(e));
-                if(player.life == 0) {
+                if player.life == 0 {
                     particles.push(spawn_particle(&mut player));
                 }
                 audio.play("explode");
@@ -328,7 +233,7 @@ pub fn main() {
         // Render
 
         canvas.clear();
-        draw_background(&mut canvas, &bg_texture);
+        draw_background(&mut canvas, &bg_texture)?;
 
         for e in &mut enemies {
             e.draw(&mut canvas, &texture);
@@ -350,13 +255,7 @@ pub fn main() {
             player.draw(&mut canvas, &texture);
         }
         
-        score_string = format!("SCORE: {}", score);
-        surface = font.render(score_string.as_str()).solid(Color::RGBA(255, 255, 255, 255)).unwrap();
-        font_texture = texture_creator.create_texture_from_surface(&surface).unwrap();
-
-        let size = font.size_of(&score_string.as_str()).unwrap();
-        let target = Rect::new(10,10, size.0, size.1);
-        canvas.copy(&font_texture, None, Some(target)).unwrap();
+        draw_string(format!("SCORE: {}", score), 10, 10, &mut canvas, &font, &texture_creator)?;
 
         for i in 0..player.life {
             canvas.copy_ex(&particle_texture, 
@@ -366,26 +265,17 @@ pub fn main() {
                 None,
                 false,
                 false
-            ).unwrap();
+            )?;
         }
 
         if player.life == 0 {
-            surface = font.render(dead1_string.as_str()).solid(Color::RGBA(255, 255, 255, 255)).unwrap();
-            font_texture = texture_creator.create_texture_from_surface(&surface).unwrap();
-            let mut size = font.size_of(&dead1_string.as_str()).unwrap();
-            let mut target = Rect::new(300,250, size.0, size.1);
-            canvas.copy(&font_texture, None, Some(target)).unwrap();
-
-            
-            surface = font.render(dead2_string.as_str()).solid(Color::RGBA(255, 255, 255, 255)).unwrap();
-            font_texture = texture_creator.create_texture_from_surface(&surface).unwrap();
-            size = font.size_of(&dead2_string.as_str()).unwrap();
-            target = Rect::new(180,350, size.0, size.1);
-            canvas.copy(&font_texture, None, Some(target)).unwrap();
+            draw_string(format!("GAME OVER"), 300, 250, &mut canvas, &font, &texture_creator)?;
+            draw_string(format!("PRESS 'R' TO RESTART"), 180, 350, &mut canvas, &font, &texture_creator)?;
         }
 
         canvas.present();
 
         //::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
     }
+    Ok(())
 }

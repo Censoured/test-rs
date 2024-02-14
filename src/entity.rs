@@ -10,6 +10,8 @@ use config::*;
 use sdl2::render::WindowCanvas;
 use sdl2::render::Texture;
 
+use rand::Rng;
+
 
 struct Animation {
     total_frames: i32,
@@ -174,4 +176,54 @@ impl Entity {
         ).unwrap();
     }
 
+}
+
+pub fn spawn_enemy() -> Entity {
+    let mut e = Entity::new(EntityType::Enemy);
+    e.pos = Vec2::new(rand::thread_rng().gen_range(100..=SCREEN_WIDTH-108) as f32, rand::thread_rng().gen_range(100..=SCREEN_HEIGHT-108) as f32);
+    while e.vel == Vec2::zero() {
+        e.vel = Vec2::new(rand::thread_rng().gen_range(-ENEMY_SPEED..=ENEMY_SPEED), rand::thread_rng().gen_range(-ENEMY_SPEED..=ENEMY_SPEED));
+    }
+    e.tex_coords = Rect::new(rand::thread_rng().gen_range(4..=9)*8,rand::thread_rng().gen_range(0..=5)*8,8,8);
+    e.size = 24;
+    //println!("Spawned enemy @[{}, {}] with velocity[{}, {}]", e.pos.x(), e.pos.y(), e.vel.x(),e.vel.y());
+    e
+}
+
+pub fn spawn_powerup() -> Entity {
+    let mut e = Entity::new(EntityType::Powerup);
+    e.pos = Vec2::new(rand::thread_rng().gen_range(100..=SCREEN_WIDTH-108) as f32, rand::thread_rng().gen_range(100..=SCREEN_HEIGHT-108) as f32);
+    e.tex_coords = Rect::new(0, 4*8,8,8);
+    e.size = 24;
+    e
+}
+
+pub fn spawn_particle(o: &mut Entity) -> Entity {
+    let mut e = Entity::new(EntityType::Particle);
+    e.pos = o.pos;
+    let anim = rand::thread_rng().gen_range(1..=3);
+    match anim {
+        1 => {e.tex_coords = Rect::new(9*8, 6*8,8,8); },
+        2 => {e.tex_coords = Rect::new(10*8, 6*8,8,8); },
+        3 => {e.tex_coords = Rect::new(10*8, 7*8,8,8); },
+        _ => {e.tex_coords = Rect::new(9*8, 6*8,8,8); }
+    }
+    //e.tex_coords = Rect::new(9*8, 6*8,8,8);
+    e.size = 24;
+    e.frames = 4;
+    //println!("Spawned enemy @[{}, {}] with velocity[{}, {}]", e.pos.x(), e.pos.y(), e.vel.x(),e.vel.y());
+    e
+}
+
+pub fn spawn_bullet(p: &Entity, v: &Vec2) -> Entity {
+    let mut e = Entity::new(EntityType::Bullet);
+    e.pos = p.pos;
+    e.vel = *v - p.pos;
+    e.vel = e.vel.normalize();
+    e.vel *= BULLET_SPEED;
+    e.tex_coords = Rect::new(8,8,8,8);
+    e.size = 24;
+    e.rot = p.rot;
+    //println!("Spawned bullet @[{}, {}] with velocity[{}, {}]", e.pos.x(), e.pos.y(), e.vel.x(),e.vel.y());
+    e
 }
