@@ -12,6 +12,46 @@ use sdl2::render::Texture;
 
 use rand::Rng;
 
+pub trait GameObject {
+    fn update(&mut self, dt: f32);
+    fn render(&mut self, canvas: &mut WindowCanvas, texture: &Texture);
+}
+
+struct Enemy {
+    transf: Transform,
+    anim: Animation
+}
+
+impl GameObject for Enemy {
+    fn update(&mut self, dt: f32) {
+        self.transf.update(dt);
+        self.anim.update(dt);
+    }
+
+    fn render(&mut self, canvas: &mut WindowCanvas, texture: &Texture) {
+        canvas.copy_ex(&texture, 
+            Some(self.anim.get_frame_rect()), 
+            Some(Rect::new(self.transf.pos.x() as i32,self.transf.pos.y() as i32,self.transf.scale.x() as u32,self.transf.scale.y() as u32)),
+            self.transf.rot as f64,
+            None,
+            false,
+            false
+        ).unwrap();
+    }
+}
+
+struct Transform {
+    pub pos: Vec2,
+    pub vel: Vec2,
+    pub scale: Vec2,
+    pub rot: f32
+}
+
+impl Transform {
+    pub fn update(&mut self, dt: f32) {
+        self.pos += self.vel * dt;
+    }
+}
 
 struct Animation {
     total_frames: i32,
@@ -66,6 +106,7 @@ pub enum EntityType {
     Player,
     Enemy,
     Bullet,
+    EnemyBullet,
     Particle,
     Powerup
 }
@@ -77,7 +118,7 @@ pub struct Entity {
     pub tex_coords: Rect,
     pub size: u32,
     pub rot: f64,
-    typ: EntityType,
+    pub typ: EntityType,
     pub frames: i8,
     frame_count: i8,
     timer: f32
@@ -143,8 +184,12 @@ impl Entity {
             self.pos = Vec2::new(self.pos.x(), (SCREEN_HEIGHT - self.size) as f32);
             out_of_bounds = true;
         }
-        if self.typ == EntityType::Bullet && out_of_bounds {
+        if (self.typ == EntityType::Bullet || self.typ == EntityType::EnemyBullet) && out_of_bounds {
             self.life = 0;
+        }
+
+        if self.typ == EntityType::Enemy && out_of_bounds {
+            self.life -= 1;
         }
         if self.timer > 0.5/(self.frames as f32) && self.typ == EntityType::Particle {
             self.timer = 0.0;
@@ -222,6 +267,19 @@ pub fn spawn_bullet(p: &Entity, v: &Vec2) -> Entity {
     e.vel = e.vel.normalize();
     e.vel *= BULLET_SPEED;
     e.tex_coords = Rect::new(8,8,8,8);
+    e.size = 24;
+    e.rot = p.rot;
+    //println!("Spawned bullet @[{}, {}] with velocity[{}, {}]", e.pos.x(), e.pos.y(), e.vel.x(),e.vel.y());
+    e
+}
+
+pub fn spawn_enemy_bullet(p: &Entity, v: &Vec2) -> Entity {
+    let mut e = Entity::new(EntityType::EnemyBullet);
+    e.pos = p.pos;
+    e.vel = *v - p.pos;
+    e.vel = e.vel.normalize();
+    e.vel *= BULLET_SPEED;
+    e.tex_coords = Rect::new(0,8,8,8);
     e.size = 24;
     e.rot = p.rot;
     //println!("Spawned bullet @[{}, {}] with velocity[{}, {}]", e.pos.x(), e.pos.y(), e.vel.x(),e.vel.y());

@@ -1,16 +1,9 @@
 use sdl2::render::{Texture, TextureCreator};
-
 use sdl2::image::LoadTexture;
-
 use sdl2::ttf::{Font, Sdl2TtfContext};
-
-
-
-
 
 use std::borrow::Borrow;
 use std::collections::HashMap;
-use std::env;
 use std::hash::Hash;
 use std::rc::Rc;
 

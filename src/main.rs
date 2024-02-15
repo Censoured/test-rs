@@ -10,6 +10,7 @@ use asset_manager::{FontManager, TextureManager};
 use rusty_audio::Audio;
 
 use sdl2::image::InitFlag;
+use sdl2::mouse::MouseButton;
 use sdl2::render::{Texture, TextureCreator, WindowCanvas};
 use sdl2::pixels::Color;
 use sdl2::event::Event;
@@ -74,7 +75,7 @@ pub fn main() -> Result<(), String> {
     let mut event_pump = sdl_context.event_pump()?;
 
     let mut texture_manager = TextureManager::new(&texture_creator);
-    let mut font_manager = FontManager::new(&ttf_context);
+    let mut _font_manager = FontManager::new(&ttf_context);
     
 
     let bg_texture = texture_manager.load("assets/SpaceShooterAssetPack_BackGrounds.png")?;
@@ -133,6 +134,7 @@ pub fn main() -> Result<(), String> {
                             player.life = 5;
                             player.pos = Vec2::new(400.0, 300.0);
                             enemies.clear();
+                            powerups.clear();
                             enemies.push(spawn_enemy());
                             enemies.push(spawn_enemy());
                             enemies.push(spawn_enemy());
@@ -159,6 +161,14 @@ pub fn main() -> Result<(), String> {
             }
         }
 
+        if event_pump.mouse_state().is_mouse_button_pressed(MouseButton::Left) {
+            let m_pos = Vec2::new(event_pump.mouse_state().x() as f32, event_pump.mouse_state().y() as f32);
+            if ticks % 450 < 4 {
+                bullets.push(spawn_bullet(&player, &m_pos));
+                audio.play("shoot");
+            }
+        }
+
         let keys: Vec<Keycode> = event_pump
             .keyboard_state()
             .pressed_scancodes()
@@ -180,6 +190,17 @@ pub fn main() -> Result<(), String> {
 
         for e in &mut enemies {
             e.update(delta_time);
+            if player.life > 0 {
+                let dist = e.pos - player.pos;
+                if dist.length_squared() < 200.0 * 200.0 {
+                    let d = player.pos - Vec2::new(e.pos.x() + 4.0, e.pos.y() + 4.0);
+                    e.rot = 180.0 -(d.x() as f64).atan2(d.y() as f64).to_degrees();
+                    if ticks % 800 < 2 {
+                        bullets.push(spawn_enemy_bullet(&e, &player.pos));
+                        audio.play("shoot");
+                    }
+                }
+            }
         }
 
         for e in &mut bullets {
@@ -213,14 +234,28 @@ pub fn main() -> Result<(), String> {
             }
             for b in &mut bullets {
                 let b_rect = Rect::new(b.pos.x() as i32, b.pos.y() as i32, b.size, b.size);
-
                 // Check if the rectangles collide
-                if b_rect.has_intersection(e_rect) {
+                if b.typ == EntityType::Bullet && b_rect.has_intersection(e_rect)  {
                     e.life = 0;
                     b.life = 0;
                     particles.push(spawn_particle(e));
                     audio.play("explode");
                     score += 500;
+                }
+            }
+        }
+
+        for b in &mut bullets {
+            let b_rect = Rect::new(b.pos.x() as i32, b.pos.y() as i32, b.size, b.size);
+
+            if b.typ == EntityType::EnemyBullet && b_rect.has_intersection(p_rect)  {
+                if player.life > 0 {
+                    player.life -= 1;
+                    b.life = 0;
+                    if player.life == 0 {
+                        particles.push(spawn_particle(&mut player));
+                        audio.play("explode");
+                    }
                 }
             }
         }
