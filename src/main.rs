@@ -3,7 +3,6 @@ extern crate sdl2;
 mod entity;
 mod config;
 mod asset_manager;
-//mod renderer;
 
 use asset_manager::{FontManager, TextureManager};
 
@@ -15,7 +14,7 @@ use sdl2::render::{Texture, TextureCreator, WindowCanvas};
 use sdl2::pixels::Color;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
-use sdl2::rect::Rect;
+use sdl2::rect::{Point, Rect};
 
 use glam::Vec2;
 
@@ -90,8 +89,10 @@ pub fn main() -> Result<(), String> {
     audio.add("powerup_collect", "assets/sfx/POWER_UP3.wav"); // Load the sound, give it a name
 
     let mut player = Entity::new(EntityType::Player);
-    player.size = 24;
-    player.tex_coords = Rect::new(8,0, 8,8);
+    player.trans.scale = Vec2::new(24.0,24.0); //size = 24;
+    player.trans.pos = Vec2::new(400.0,300.0);
+    //player.tex_coords = Rect::new(8,0, 8,8);
+    player.anim = Animation::construct(1, 0, 1, Point::new(8,8), 1, true);
 
     let mut enemies: Vec<Entity> = Vec::new();
     let mut bullets: Vec<Entity> = Vec::new();
@@ -132,7 +133,8 @@ pub fn main() -> Result<(), String> {
                         if player.life == 0
                         {
                             player.life = 5;
-                            player.pos = Vec2::new(400.0, 300.0);
+                            player.shield = 3;
+                            player.trans.pos = Vec2::new(400.0, 300.0);
                             enemies.clear();
                             powerups.clear();
                             enemies.push(spawn_enemy());
@@ -152,9 +154,7 @@ pub fn main() -> Result<(), String> {
                 }
 
                 Event::MouseMotion { x, y, .. } => {
-                    let m_pos = Vec2::new(x as f32,y as f32);
-                    let d = m_pos - Vec2::new(player.pos.x() + 4.0, player.pos.y() + 4.0);
-                    player.rot = 180.0 -(d.x() as f64).atan2(d.y() as f64).to_degrees();
+                    player.trans.rotate_to_vec2(Vec2::new(x as f32,y as f32));
                 }
 
                 _ => {}
@@ -191,18 +191,17 @@ pub fn main() -> Result<(), String> {
         for e in &mut enemies {
             e.update(delta_time);
             if player.life > 0 {
-                let dist = e.pos - player.pos;
+                let dist = e.trans.pos - player.trans.pos;
                 if dist.length_squared() < 200.0 * 200.0 {
-                    let d = player.pos - Vec2::new(e.pos.x() + 4.0, e.pos.y() + 4.0);
-                    e.rot = 180.0 -(d.x() as f64).atan2(d.y() as f64).to_degrees();
+                    e.trans.rotate_to_vec2(player.trans.pos);
                     if ticks % 800 < 2 {
-                        bullets.push(spawn_enemy_bullet(&e, &player.pos));
+                        bullets.push(spawn_enemy_bullet(&e, &player.trans.pos));
                         audio.play("shoot");
                     }
                 }
             }
         }
-
+        
         for e in &mut bullets {
             e.update(delta_time);
         }
@@ -216,7 +215,33 @@ pub fn main() -> Result<(), String> {
             let e_rect = p.get_rect();
             if p_rect.has_intersection(e_rect) && player.life > 0 {
                 p.life = 0;
-                player.life += 1;
+                match p.typ {
+                    EntityType::PowerupHealth => {
+                        player.life += 1;
+                    }
+                    EntityType::PowerupShield => {
+                        player.shield += 1;
+                    }
+                    EntityType::PowerupNuke => {
+                        for e in &mut enemies {
+                            e.life = 0;
+                            particles.push(spawn_particle(e));
+                        }
+                    }
+                    EntityType::PowerupBulletSpeed => { 
+                        for r in (0..=360).step_by(20) {
+                            let mut v = Vec2::new(
+                                p.trans.pos.x() * f32::cos(f32::to_radians(r as f32)),
+                                p.trans.pos.y() * f32::sin(f32::to_radians(r as f32))
+                            );
+                            v *= BULLET_SPEED;
+                            bullets.push(spawn_bullet(p, &v));
+                            audio.play("shoot");
+                        }
+                    }
+                    _ => {}
+                }
+                //player.life += 1;
                 audio.play("powerup_collect");
             }
         }
@@ -225,7 +250,13 @@ pub fn main() -> Result<(), String> {
             let e_rect = e.get_rect();
             if p_rect.has_intersection(e_rect) && player.life > 0 {
                 e.life = 0;
-                player.life -= 1;
+                if player.shield > 0 {
+                    player.shield -= 1;
+                    particles.push(spawn_particle_shield(&player));
+                }
+                else {
+                    player.life -= 1;
+                }
                 particles.push(spawn_particle(e));
                 if player.life == 0 {
                     particles.push(spawn_particle(&mut player));
@@ -233,7 +264,7 @@ pub fn main() -> Result<(), String> {
                 audio.play("explode");
             }
             for b in &mut bullets {
-                let b_rect = Rect::new(b.pos.x() as i32, b.pos.y() as i32, b.size, b.size);
+                let b_rect = b.trans.get_rect();
                 // Check if the rectangles collide
                 if b.typ == EntityType::Bullet && b_rect.has_intersection(e_rect)  {
                     e.life = 0;
@@ -246,11 +277,17 @@ pub fn main() -> Result<(), String> {
         }
 
         for b in &mut bullets {
-            let b_rect = Rect::new(b.pos.x() as i32, b.pos.y() as i32, b.size, b.size);
+            let b_rect = b.trans.get_rect(); //Rect::new(b.pos.x() as i32, b.pos.y() as i32, b.size, b.size);
 
             if b.typ == EntityType::EnemyBullet && b_rect.has_intersection(p_rect)  {
                 if player.life > 0 {
-                    player.life -= 1;
+                    if player.shield > 0 {
+                        player.shield -= 1;
+                        particles.push(spawn_particle_shield(&player));
+                    }
+                    else {
+                        player.life -= 1;
+                    }
                     b.life = 0;
                     if player.life == 0 {
                         particles.push(spawn_particle(&mut player));
@@ -269,6 +306,7 @@ pub fn main() -> Result<(), String> {
 
         canvas.clear();
         draw_background(&mut canvas, &bg_texture)?;
+        
 
         for e in &mut enemies {
             e.draw(&mut canvas, &texture);
@@ -276,6 +314,10 @@ pub fn main() -> Result<(), String> {
 
         for e in &mut bullets {
             e.draw(&mut canvas, &bullets_texture);
+        }
+
+        if player.life > 0 {
+            player.draw(&mut canvas, &texture);
         }
 
         for e in &mut particles {
@@ -286,16 +328,25 @@ pub fn main() -> Result<(), String> {
             e.draw(&mut canvas, &particle_texture);
         }
 
-        if player.life > 0 {
-            player.draw(&mut canvas, &texture);
-        }
+        
         
         draw_string(format!("SCORE: {}", score), 10, 10, &mut canvas, &font, &texture_creator)?;
 
         for i in 0..player.life {
             canvas.copy_ex(&particle_texture, 
-                Rect::new(16,0,8,8), 
-                Rect::new((((i % 8 )*22) + 10) as i32 ,40 + ((i / 8) * 22),20,20),
+                Rect::new(0,32,8,8), 
+                Rect::new((((i % 8 )*20) + 10) as i32 ,40 + ((i / 8) * 20),20,20),
+                0.0, 
+                None,
+                false,
+                false
+            )?;
+        }
+
+        for i in 0..player.shield {
+            canvas.copy_ex(&particle_texture, 
+                Rect::new(0,24,8,8), 
+                Rect::new((((i % 8 )*20) + 10) as i32 ,80 + ((i / 8) * 20),20,20),
                 0.0, 
                 None,
                 false,

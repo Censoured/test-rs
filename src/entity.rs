@@ -12,59 +12,70 @@ use sdl2::render::Texture;
 
 use rand::Rng;
 
-pub trait GameObject {
-    fn update(&mut self, dt: f32);
-    fn render(&mut self, canvas: &mut WindowCanvas, texture: &Texture);
-}
-
-struct Enemy {
-    transf: Transform,
-    anim: Animation
-}
-
-impl GameObject for Enemy {
-    fn update(&mut self, dt: f32) {
-        self.transf.update(dt);
-        self.anim.update(dt);
-    }
-
-    fn render(&mut self, canvas: &mut WindowCanvas, texture: &Texture) {
-        canvas.copy_ex(&texture, 
-            Some(self.anim.get_frame_rect()), 
-            Some(Rect::new(self.transf.pos.x() as i32,self.transf.pos.y() as i32,self.transf.scale.x() as u32,self.transf.scale.y() as u32)),
-            self.transf.rot as f64,
-            None,
-            false,
-            false
-        ).unwrap();
-    }
-}
-
-struct Transform {
+#[derive(Clone)]
+pub struct Transform {
     pub pos: Vec2,
     pub vel: Vec2,
     pub scale: Vec2,
-    pub rot: f32
+    pub rot: f64
 }
 
 impl Transform {
+    pub fn new() -> Self {
+        Transform {
+            pos: Vec2::new(0.0, 0.0),
+            vel: Vec2::new(0.0, 0.0),
+            scale: Vec2::new(0.0, 0.0),
+            rot: 0.0
+        }
+    }
     pub fn update(&mut self, dt: f32) {
         self.pos += self.vel * dt;
     }
+
+    pub fn rotate_to_velocity(&mut self) {
+        self.rot = 180.0 - (self.vel.x() as f64).atan2(self.vel.y() as f64).to_degrees();
+    }
+
+    pub fn rotate_to_vec2(&mut self, target: Vec2) {
+        let d = target - self.pos;
+        self.rot = 180.0 -(d.x() as f64).atan2(d.y() as f64).to_degrees();
+    }
+
+    pub fn get_rect(&self) -> Rect {
+        return Rect::new(self.pos.x() as i32, self.pos.y() as i32, self.scale.x() as u32, self.scale.y() as u32);
+    }
 }
 
-struct Animation {
+#[derive(Clone)]
+pub struct Animation {
     total_frames: i32,
     current_frame: i32,
     first_row: i32,
     first_col: i32,
     frame_size: Point,
     frames_per_sec: i32,
-    timer: f32
+    timer: f32,
+    repeated: bool,
+    finished: bool
 }
 
 impl Animation {
-    pub fn new(tf: i32, fr: i32, fc:i32, fs: Point, fps: i32) -> Self {
+    pub fn new() -> Self {
+        Animation {
+            total_frames: 1,
+            current_frame: 0,
+            first_row: 0,
+            first_col: 0,
+            frame_size: Point::new(0,0),
+            frames_per_sec: 0,
+            timer: 0.0,
+            repeated: true,
+            finished: false
+        }
+    }
+
+    pub fn construct(tf: i32, fr: i32, fc:i32, fs: Point, fps: i32, repeat: bool) -> Self {
         Animation {
             total_frames: tf,
             current_frame: 0,
@@ -72,7 +83,9 @@ impl Animation {
             first_col: fc,
             frame_size: fs,
             frames_per_sec: fps,
-            timer: 0.0
+            timer: 0.0,
+            repeated: repeat,
+            finished: false
         }
     }
 
@@ -86,9 +99,26 @@ impl Animation {
             self.current_frame += 1;
 
             if self.current_frame == self.total_frames {
-                self.current_frame = 0;
+                if self.repeated {
+                    self.current_frame = 0;
+                }
+                else
+                {
+                   self.finished = true; 
+                }
             }
         }
+    }
+
+    pub fn draw(&mut self, canvas: &mut WindowCanvas, texture: &Texture, trans: &Transform) {
+        canvas.copy_ex(&texture, 
+            self.get_frame_rect(), 
+            trans.get_rect(),
+            trans.rot,
+            None,
+            false,
+            false
+        ).unwrap();
     }
 
     pub fn get_frame_rect(&self) -> Rect {
@@ -101,87 +131,85 @@ impl Animation {
 }
 
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum EntityType {
     Player,
     Enemy,
     Bullet,
     EnemyBullet,
     Particle,
-    Powerup
+    PowerupHealth,
+    PowerupShield,
+    PowerupBulletSpeed,
+    PowerupNuke
 }
 
+#[derive(Clone)]
 pub struct Entity {
-    pub pos: Vec2,
-    pub vel: Vec2,
-    pub life: i32,
-    pub tex_coords: Rect,
-    pub size: u32,
-    pub rot: f64,
     pub typ: EntityType,
-    pub frames: i8,
-    frame_count: i8,
-    timer: f32
+    pub trans: Transform,
+    pub anim: Animation,
+    pub life: i32,
+    pub shield: i32
 }
 
 impl Entity {
     pub fn new(t: EntityType) -> Self {
         Entity {
-            pos: Vec2::new(400.0, 300.0),
-            vel: Vec2::new(0.0, 0.0),
+            trans: Transform::new(),
+            anim: Animation::new(),
             life: 5,
-            tex_coords : Rect::new(0, 0, 0, 0),
-            size: 50,
-            rot: 0.0,
+            shield: 3,
             typ: t,
-            frames: 1,
-            frame_count: 0,
-            timer: 0.0
         }
     }
 
     pub fn get_rect(&self) -> Rect {
-        return Rect::new(self.pos.x() as i32, self.pos.y() as i32, self.size, self.size);
+        self.trans.get_rect()
     }
 
     pub fn update_position(&mut self, keys: &[Keycode], dt: f32) {
+        self.trans.vel = Vec2::zero();
         for key in keys {
             match key {
-                Keycode::W => self.vel -= Vec2::unit_y(),
-                Keycode::A => self.vel -= Vec2::unit_x(),
-                Keycode::S => self.vel += Vec2::unit_y(),
-                Keycode::D => self.vel += Vec2::unit_x(),
+                Keycode::W => self.trans.vel -= Vec2::unit_y(),
+                Keycode::A => self.trans.vel -= Vec2::unit_x(),
+                Keycode::S => self.trans.vel += Vec2::unit_y(),
+                Keycode::D => self.trans.vel += Vec2::unit_x(),
                 _ => {}
             }
         }
-        self.vel.normalize();
-        self.vel *= PLAYER_SPEED * dt;
-        self.pos += self.vel;
+        if self.trans.vel != Vec2::zero() {
+            self.trans.vel = self.trans.vel.normalize();
+            self.trans.vel *= PLAYER_SPEED;
+            self.trans.update(dt);
+        }
+        
+        //self.trans.pos += self.trans.vel;
     }
 
     pub fn update(&mut self, dt: f32) {
         let mut out_of_bounds = false;
-        self.timer += dt;
-        self.pos += self.vel * dt;
-        self.rot = -(self.vel.x() as f64).atan2(self.vel.y() as f64).to_degrees();
-        if self.pos.x() < -((self.size * 2) as f32) {
-            self.vel = Vec2::new(-self.vel.x(), self.vel.y());
-            self.pos = Vec2::new(-((self.size * 2) as f32), self.pos.y());
+        self.trans.update(dt);
+        self.trans.rotate_to_velocity();
+        if self.trans.pos.x() < -(self.trans.scale.x() * 2.0) {
+            self.trans.vel = Vec2::new(-self.trans.vel.x(), self.trans.vel.y());
+            self.trans.pos = Vec2::new(-self.trans.scale.x() * 2.0, self.trans.pos.y());
             out_of_bounds = true;
         }
-        if self.pos.y() < -((self.size * 2) as f32) {
-            self.vel = Vec2::new(self.vel.x(), -self.vel.y());
-            self.pos = Vec2::new(self.pos.x(), -((self.size * 2) as f32));
+        if self.trans.pos.y() < -(self.trans.scale.y() * 2.0) {
+            self.trans.vel = Vec2::new(self.trans.vel.x(), -self.trans.vel.y());
+            self.trans.pos = Vec2::new(self.trans.pos.x(), -self.trans.scale.y() * 2.0);
             out_of_bounds = true;
         }
-        if self.pos.x() as u32 > SCREEN_WIDTH + self.size * 2 {
-            self.vel = Vec2::new(-self.vel.x(), self.vel.y());
-            self.pos = Vec2::new((SCREEN_WIDTH - self.size) as f32, self.pos.y());
+        if self.trans.pos.x() > SCREEN_WIDTH as f32 + self.trans.scale.x() * 2.0 {
+            self.trans.vel = Vec2::new(-self.trans.vel.x(), self.trans.vel.y());
+            self.trans.pos = Vec2::new(SCREEN_WIDTH as f32 + self.trans.scale.x(), self.trans.pos.y());
             out_of_bounds = true;
         }
-        if self.pos.y() as u32 > SCREEN_HEIGHT + self.size * 2 {
-            self.vel = Vec2::new(self.vel.x(), -self.vel.y());
-            self.pos = Vec2::new(self.pos.x(), (SCREEN_HEIGHT - self.size) as f32);
+        if self.trans.pos.y() > SCREEN_HEIGHT as f32 + self.trans.scale.y() * 2.0 {
+            self.trans.vel = Vec2::new(self.trans.vel.x(), -self.trans.vel.y());
+            self.trans.pos = Vec2::new(self.trans.pos.x(), SCREEN_HEIGHT as f32 + self.trans.scale.y());
             out_of_bounds = true;
         }
         if (self.typ == EntityType::Bullet || self.typ == EntityType::EnemyBullet) && out_of_bounds {
@@ -191,97 +219,101 @@ impl Entity {
         if self.typ == EntityType::Enemy && out_of_bounds {
             self.life -= 1;
         }
-        if self.timer > 0.5/(self.frames as f32) && self.typ == EntityType::Particle {
-            self.timer = 0.0;
-            self.frame_count += 1;
-            //println!("Frame: {}", self.frame_count);
-            if self.frame_count == self.frames {
-                self.frame_count = 0;
-                self.life = 0;
-            }
-            self.tex_coords = Rect::new(
-                self.tex_coords.x() + self.tex_coords.width() as i32,
-                self.tex_coords.y(),
-                self.tex_coords.width(),
-                self.tex_coords.height()
-            ); 
-            //println!("TexCoords: {},{},{},{}", self.tex_coords.x(), self.tex_coords.y(), self.tex_coords.width(), self.tex_coords.height());
+        self.anim.update(dt);
+        if self.anim.finished && self.typ == EntityType::Particle {
+            self.life = 0;
         }
         
     }
 
     pub fn draw(&mut self, canvas: &mut WindowCanvas, texture: &Texture) {
-        canvas.copy_ex(&texture, 
-            Some(self.tex_coords), 
-            Some(Rect::new(self.pos.x() as i32,self.pos.y() as i32,self.size,self.size)),
-            self.rot as f64,
-            None,
-            false,
-            false
-        ).unwrap();
+        self.anim.draw(canvas, texture, &self.trans);
     }
 
 }
 
 pub fn spawn_enemy() -> Entity {
     let mut e = Entity::new(EntityType::Enemy);
-    e.pos = Vec2::new(rand::thread_rng().gen_range(100..=SCREEN_WIDTH-108) as f32, rand::thread_rng().gen_range(100..=SCREEN_HEIGHT-108) as f32);
-    while e.vel == Vec2::zero() {
-        e.vel = Vec2::new(rand::thread_rng().gen_range(-ENEMY_SPEED..=ENEMY_SPEED), rand::thread_rng().gen_range(-ENEMY_SPEED..=ENEMY_SPEED));
+    e.trans.pos = Vec2::new(rand::thread_rng().gen_range(100..=SCREEN_WIDTH-108) as f32, rand::thread_rng().gen_range(100..=SCREEN_HEIGHT-108) as f32);
+    while e.trans.vel == Vec2::zero() {
+        e.trans.vel = Vec2::new(rand::thread_rng().gen_range(-ENEMY_SPEED..=ENEMY_SPEED), rand::thread_rng().gen_range(-ENEMY_SPEED..=ENEMY_SPEED));
     }
-    e.tex_coords = Rect::new(rand::thread_rng().gen_range(4..=9)*8,rand::thread_rng().gen_range(0..=5)*8,8,8);
-    e.size = 24;
-    //println!("Spawned enemy @[{}, {}] with velocity[{}, {}]", e.pos.x(), e.pos.y(), e.vel.x(),e.vel.y());
+    e.anim = Animation::construct(1, rand::thread_rng().gen_range(0..=5), rand::thread_rng().gen_range(4..=9), Point::new(8,8), 1, true);
+    e.trans.scale = Vec2::new(24.0, 24.0);
     e
 }
 
 pub fn spawn_powerup() -> Entity {
-    let mut e = Entity::new(EntityType::Powerup);
-    e.pos = Vec2::new(rand::thread_rng().gen_range(100..=SCREEN_WIDTH-108) as f32, rand::thread_rng().gen_range(100..=SCREEN_HEIGHT-108) as f32);
-    e.tex_coords = Rect::new(0, 4*8,8,8);
-    e.size = 24;
+    let ptype = rand::thread_rng().gen_range(0..4);
+    println!("ptype={}", ptype);
+    let mut e = Entity::new(EntityType::PowerupHealth);
+    e.trans.pos = Vec2::new(rand::thread_rng().gen_range(100..=SCREEN_WIDTH-108) as f32, rand::thread_rng().gen_range(100..=SCREEN_HEIGHT-108) as f32);
+    e.trans.scale = Vec2::new(24.0, 24.0);
+    match ptype {
+        0 => {
+            e.typ = EntityType::PowerupHealth;
+            e.anim = Animation::construct(1, 0, 2, Point::new(8,8), 1, true);
+        }
+        1 => {
+            e.typ = EntityType::PowerupShield;
+            e.anim = Animation::construct(1, 0, 3, Point::new(8,8), 1, true);
+        }
+        2 => {
+            e.typ = EntityType::PowerupNuke;
+            e.anim = Animation::construct(1, 6, 11, Point::new(8,8), 1, true);
+        }
+        3 => {
+            e.typ = EntityType::PowerupBulletSpeed;
+            e.anim = Animation::construct(1, 1, 3, Point::new(8,8), 1, true);
+        }
+        _ => {}
+    }
     e
 }
 
 pub fn spawn_particle(o: &mut Entity) -> Entity {
     let mut e = Entity::new(EntityType::Particle);
-    e.pos = o.pos;
+    e.trans.pos = o.trans.pos;
     let anim = rand::thread_rng().gen_range(1..=3);
+    e.anim = Animation::construct(4, 0, 0, Point::new(8,8), 4, false);
     match anim {
-        1 => {e.tex_coords = Rect::new(9*8, 6*8,8,8); },
-        2 => {e.tex_coords = Rect::new(10*8, 6*8,8,8); },
-        3 => {e.tex_coords = Rect::new(10*8, 7*8,8,8); },
-        _ => {e.tex_coords = Rect::new(9*8, 6*8,8,8); }
+        1 => { e.anim.first_col = 8; e.anim.first_row = 6; },
+        2 => { e.anim.first_col = 9; e.anim.first_row = 6; },
+        3 => { e.anim.first_col = 9; e.anim.first_row = 7; },
+        _ => { e.anim.first_col = 8; e.anim.first_row = 6;  }
     }
-    //e.tex_coords = Rect::new(9*8, 6*8,8,8);
-    e.size = 24;
-    e.frames = 4;
-    //println!("Spawned enemy @[{}, {}] with velocity[{}, {}]", e.pos.x(), e.pos.y(), e.vel.x(),e.vel.y());
+    e.trans.scale = Vec2::new(24.0, 24.0);
+    e
+}
+
+pub fn spawn_particle_shield(o: &Entity) -> Entity {
+    let mut e = Entity::new(EntityType::Particle);
+    e.trans.pos = Vec2::new(o.trans.pos.x() - 8.0, o.trans.pos.y() - 8.0);
+    e.anim = Animation::construct(4, 2, 2, Point::new(16,16), 16, false);
+    e.trans.scale = Vec2::new(40.0, 40.0);
     e
 }
 
 pub fn spawn_bullet(p: &Entity, v: &Vec2) -> Entity {
     let mut e = Entity::new(EntityType::Bullet);
-    e.pos = p.pos;
-    e.vel = *v - p.pos;
-    e.vel = e.vel.normalize();
-    e.vel *= BULLET_SPEED;
-    e.tex_coords = Rect::new(8,8,8,8);
-    e.size = 24;
-    e.rot = p.rot;
-    //println!("Spawned bullet @[{}, {}] with velocity[{}, {}]", e.pos.x(), e.pos.y(), e.vel.x(),e.vel.y());
+    e.trans.pos = p.trans.pos;
+    e.trans.vel = *v - p.trans.pos;
+    e.trans.vel = e.trans.vel.normalize();
+    e.trans.vel *= BULLET_SPEED;
+    e.anim = Animation::construct(1, 1, 1, Point::new(8,8), 1, true);
+    e.trans.scale = Vec2::new(24.0, 24.0);
+    e.trans.rot = p.trans.rot;
     e
 }
 
 pub fn spawn_enemy_bullet(p: &Entity, v: &Vec2) -> Entity {
     let mut e = Entity::new(EntityType::EnemyBullet);
-    e.pos = p.pos;
-    e.vel = *v - p.pos;
-    e.vel = e.vel.normalize();
-    e.vel *= BULLET_SPEED;
-    e.tex_coords = Rect::new(0,8,8,8);
-    e.size = 24;
-    e.rot = p.rot;
-    //println!("Spawned bullet @[{}, {}] with velocity[{}, {}]", e.pos.x(), e.pos.y(), e.vel.x(),e.vel.y());
+    e.trans.pos = p.trans.pos;
+    e.trans.vel = *v - p.trans.pos;
+    e.trans.vel = e.trans.vel.normalize();
+    e.trans.vel *= BULLET_SPEED;
+    e.anim = Animation::construct(1, 1, 0, Point::new(8,8), 1, true);
+    e.trans.scale = Vec2::new(24.0, 24.0);
+    e.trans.rot = p.trans.rot;
     e
 }
